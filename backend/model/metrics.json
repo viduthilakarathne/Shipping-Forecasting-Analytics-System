@@ -1,0 +1,43 @@
+{
+  "mae": 4.3654,
+  "rmse": 7.1206,
+  "r2": 0.9884,
+  "cv_mae_mean": 15.797,
+  "cv_mae_std": 17.8388,
+  "cv_rmse_mean": 23.9122,
+  "cv_rmse_std": 29.2284,
+  "cv_r2_mean": 0.689,
+  "cv_r2_std": 0.1903,
+  "n_samples": 6192,
+  "n_features": 9,
+  "model_type": "RandomForestRegressor",
+  "feature_names": [
+    "ship_count",
+    "prev_week_count",
+    "prev2_week_count",
+    "rolling_mean_4w",
+    "trend_diff",
+    "week_num",
+    "month",
+    "year",
+    "port_encoded"
+  ],
+  "port_classes": [
+    "Belfast",
+    "Dover",
+    "Felixstowe",
+    "Forth",
+    "Grimsby",
+    "Holyhead",
+    "Hull",
+    "Larne",
+    "Liverpool",
+    "London",
+    "Milford Haven",
+    "Portsmouth",
+    "Southampton",
+    "Teesport",
+    "Tyne",
+    "Warrenpoint"
+  ]
+}

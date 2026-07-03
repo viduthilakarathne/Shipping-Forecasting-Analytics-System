@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UK Port Shipping Intelligence Dashboard</title>
+  <meta name="description" content="AI-powered UK port shipping analytics — real-time predictions, interactive map, trend analysis and automated PDF reporting." />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Google Maps (replaced at runtime if API key provided) -->
+  <script>
+    window.GOOGLE_MAPS_API_KEY = "";  // ← Paste your API key here
+  </script>
+
+  <style>
+    /* ═══════════════════════════════════════════════════════
+       DESIGN TOKENS
+    ═══════════════════════════════════════════════════════ */
+    :root {
+      --navy:      #0F2A5C;
+      --navy-dark: #081A3E;
+      --teal:      #0D9488;
+      --teal-light:#14B8A6;
+      --amber:     #F59E0B;
+      --green:     #22C55E;
+      --red:       #EF4444;
+      --purple:    #8B5CF6;
+      --bg:        #060F1E;
+      --surface:   #0D1B2E;
+      --card:      #111D33;
+      --border:    rgba(255,255,255,0.08);
+      --text:      #E2E8F0;
+      --text-muted:#64748B;
+      --glow-teal: 0 0 40px rgba(13,148,136,0.25);
+      --glow-navy: 0 0 60px rgba(15,42,92,0.4);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       RESET & BASE
+    ═══════════════════════════════════════════════════════ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated bg grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(13,148,136,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(13,148,136,0.03) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SCROLLBAR
+    ═══════════════════════════════════════════════════════ */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--teal); border-radius: 4px; }
+
+    /* ═══════════════════════════════════════════════════════
+       TOPBAR
+    ═══════════════════════════════════════════════════════ */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 64px;
+      background: rgba(6,15,30,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 1000;
+    }
+
+    #topbar .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 800;
+      font-size: 18px;
+      letter-spacing: -0.3px;
+      color: var(--text);
+    }
+
+    #topbar .logo .icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--teal), var(--navy));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: var(--glow-teal);
+    }
+
+    #topbar .logo .tag {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--teal);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    #topbar .nav-pills {
+      display: flex;
+      gap: 4px;
+      background: var(--surface);
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .nav-pill {
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+    }
+
+    .nav-pill.active, .nav-pill:hover {
+      background: var(--teal);
+      color: white;
+    }
+
+    #topbar .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.offline { background: var(--red); animation: none; }
+    .status-dot.loading {
+      background: var(--amber);
+      animation: pulse 0.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       MAIN LAYOUT
+    ═══════════════════════════════════════════════════════ */
+    #main {
+      padding-top: 64px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SECTIONS (views)
+    ═══════════════════════════════════════════════════════ */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ═══════════════════════════════════════════════════════
+       DASHBOARD VIEW
+    ═══════════════════════════════════════════════════════ */
+    #view-dashboard {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      grid-template-rows: auto 1fr;
+      height: calc(100vh - 64px);
+    }
+
+    /* ── KPI Row ── */
+    #kpi-row {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 16px;
+      padding: 20px 24px 0;
+      overflow-x: auto;
+    }
+
+    .kpi-card {
+      flex: 1 1 160px;
+      min-width: 160px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--kpi-color, var(--teal));
+    }
+
+    .kpi-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    }
+
+    .kpi-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--kpi-color, var(--text));
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    .kpi-icon {
+      position: absolute;
+      top: 16px; right: 16px;
+      font-size: 24px;
+      opacity: 0.3;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #sidebar h3 {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      padding: 4px 0 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .port-list-item {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    .port-list-item:hover, .port-list-item.selected {
+      border-color: var(--teal);
+      background: rgba(13,148,136,0.08);
+      transform: translateX(4px);
+    }
+
+    .port-list-item .pname {
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .trend-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-weight: 700;
+    }
+
+    .trend-up   { background: rgba(34,197,94,0.15); color: var(--green); }
+    .trend-down { background: rgba(239,68,68,0.15); color: var(--red); }
+    .trend-flat { background: rgba(100,116,139,0.15); color: var(--text-muted); }
+
+    .port-counts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .port-count-val {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .port-count-val span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .pred-highlight {
+      color: var(--teal-light) !important;
+    }
+
+    /* ── Map area ── */
+    #map-container {
+      position: relative;
+      background: linear-gradient(135deg, #060F1E 0%, #0D1B2E 100%);
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Fallback map (canvas-based) */
+    #map-canvas {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Map overlay controls */
+    #map-controls {
+      position: absolute;
+      top: 16px; right: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 100;
+    }
+
+    .map-btn {
+      width: 40px; height: 40px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 18px;
+      transition: all 0.2s;
+      backdrop-filter: blur(10px);
+    }
+
+    .map-btn:hover {
+      background: var(--teal);
+      border-color: var(--teal);
+    }
+
+    /* Port popup / tooltip */
+    #port-popup {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card);
+      border: 1px solid var(--teal);
+      border-radius: 20px;
+      padding: 20px 24px;
+      min-width: 360px;
+      display: none;
+      z-index: 200;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), var(--glow-teal);
+      animation: slideUp 0.3s ease;
+    }
+
+    #port-popup.visible { display: block; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    #port-popup .popup-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    #port-popup .popup-title {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    #popup-close {
+      width: 28px; height: 28px;
+      background: var(--border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      border: none;
+      color: var(--text-muted);
+      transition: all 0.2s;
+    }
+
+    #popup-close:hover { background: var(--red); color: white; }
+
+    .popup-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .popup-stat {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+      border: 1px solid var(--border);
+    }
+
+    .popup-stat .stat-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .popup-stat .stat-value {
+      font-size: 22px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-prev { color: var(--text-muted); }
+    .stat-curr { color: var(--text); }
+    .stat-pred { color: var(--teal-light); }
+
+    /* ═══════════════════════════════════════════════════════
+       ANALYTICS VIEW
+    ═══════════════════════════════════════════════════════ */
+    #view-analytics {
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .section-title {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .section-sub {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .analytics-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .analytics-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+
+    .analytics-card h4 {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 16px;
+    }
+
+    /* Bar chart */
+    .bar-chart {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bar-label {
+      font-size: 12px;
+      width: 100px;
+      flex-shrink: 0;
+      text-align: right;
+      color: var(--text);
+    }
+
+    .bar-track {
+      flex: 1;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      height: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 6px;
+      font-size: 10px;
+      font-weight: 700;
+      transition: width 1s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       REPORT & UPLOAD VIEW
+    ═══════════════════════════════════════════════════════ */
+    #view-report {
+      padding: 24px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .report-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+
+    .report-card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .report-card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+
+    /* Form inputs */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+
+    .form-input:focus {
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(13,148,136,0.15);
+    }
+
+    /* Upload drop zone */
+    #dropzone {
+      border: 2px dashed var(--border);
+      border-radius: 20px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+
+    #dropzone:hover, #dropzone.drag-over {
+      border-color: var(--teal);
+      background: rgba(13,148,136,0.05);
+    }
+
+    #dropzone .dz-icon { font-size: 48px; margin-bottom: 12px; }
+    #dropzone .dz-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+    #dropzone .dz-sub { font-size: 13px; color: var(--text-muted); }
+
+    #file-input { display: none; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--teal), var(--teal-light));
+      color: white;
+      box-shadow: 0 4px 20px rgba(13,148,136,0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(13,148,136,0.4);
+    }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+
+    .btn-danger {
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+      border: 1px solid rgba(239,68,68,0.3);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Metrics display */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .metric-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .metric-box .m-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+    }
+
+    .metric-box .m-value {
+      font-size: 28px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--teal-light);
+    }
+
+    .metric-box .m-cv {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Toast notifications */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      z-index: 9999;
+    }
+
+    .toast {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 18px;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 280px;
+      animation: toastIn 0.3s ease;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+    }
+
+    .toast.success { border-color: var(--green); }
+    .toast.error   { border-color: var(--red); }
+    .toast.info    { border-color: var(--teal); }
+
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateX(40px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Loading overlay */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(6,15,30,0.85);
+      backdrop-filter: blur(10px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 9000;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    #loading-overlay.visible { display: flex; }
+
+    .spinner {
+      width: 56px; height: 56px;
+      border: 3px solid var(--border);
+      border-top-color: var(--teal);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    /* Progress bar */
+    .progress-bar-wrap {
+      width: 240px;
+      height: 4px;
+      background: var(--surface);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--teal);
+      border-radius: 2px;
+      animation: progressAnim 1.5s ease infinite;
+    }
+
+    @keyframes progressAnim {
+      0% { width: 0%; margin-left: 0; }
+      50% { width: 70%; margin-left: 0; }
+      100% { width: 0%; margin-left: 100%; }
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       RESPONSIVE
+    ═══════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      #view-dashboard {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 400px;
+      }
+      #sidebar { max-height: 280px; }
+      .popup-stats { grid-template-columns: 1fr; }
+      .metrics-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ═══════════════════════════════════════════════════════
+       SVG MAP MARKERS
+    ═══════════════════════════════════════════════════════ */
+    .svg-marker {
+      cursor: pointer;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+      transition: all 0.2s;
+    }
+
+    .svg-marker:hover { filter: drop-shadow(0 0 12px rgba(13,148,136,0.8)); }
+    .svg-marker.selected { filter: drop-shadow(0 0 16px rgba(245,158,11,0.9)); }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .toggle-label {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+
+    .toggle input { display: none; }
+
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: all 0.3s;
+    }
+
+    .toggle input:checked + .toggle-slider { background: var(--teal); border-color: var(--teal); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); background: white; }
+
+    /* File chosen indicator */
+    #file-chosen {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      background: rgba(13,148,136,0.1);
+      border: 1px solid rgba(13,148,136,0.3);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-top: 12px;
+    }
+
+    #file-chosen.visible { display: flex; }
+
+    .chosen-icon { font-size: 20px; }
+    .chosen-name { font-size: 13px; font-weight: 600; flex: 1; }
+    .chosen-clear { cursor: pointer; color: var(--text-muted); font-size: 16px; }
+    .chosen-clear:hover { color: var(--red); }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ TOPBAR ════════════════════════════════════ -->
+<nav id="topbar">
+  <div class="logo">
+    <div class="icon">🚢</div>
+    <div>
+      <div>ShipTrack AI</div>
+      <div class="tag">UK Port Intelligence</div>
+    </div>
+  </div>
+
+  <div class="nav-pills">
+    <button class="nav-pill active" onclick="showView('dashboard')" id="pill-dashboard">🗺 Dashboard</button>
+    <button class="nav-pill" onclick="showView('analytics')" id="pill-analytics">📊 Analytics</button>
+    <button class="nav-pill" onclick="showView('report')" id="pill-report">📋 Report</button>
+  </div>
+
+  <div class="status-badge">
+    <div class="status-dot loading" id="status-dot"></div>
+    <span id="status-text">Initialising...</span>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════ MAIN ══════════════════════════════════════ -->
+<main id="main">
+
+  <!-- ══════════════ DASHBOARD VIEW ══════════════════════════════════ -->
+  <div id="view-dashboard" class="view active">
+
+    <!-- KPI Row -->
+    <div id="kpi-row">
+      <div class="kpi-card" style="--kpi-color: var(--teal)">
+        <div class="kpi-icon">🚢</div>
+        <div class="kpi-label">Total This Week</div>
+        <div class="kpi-value" id="kpi-current">—</div>
+        <div class="kpi-sub">Ships across all UK ports</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--text-muted)">
+        <div class="kpi-icon">📅</div>
+        <div class="kpi-label">Previous Week</div>
+        <div class="kpi-value" id="kpi-prev">—</div>
+        <div class="kpi-sub" id="kpi-change-text">Change vs prior week</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--amber)">
+        <div class="kpi-icon">🔮</div>
+        <div class="kpi-label">Predicted Next Week</div>
+        <div class="kpi-value" id="kpi-pred" style="color:var(--amber)">—</div>
+        <div class="kpi-sub">AI forecast</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--green)">
+        <div class="kpi-icon">🏆</div>
+        <div class="kpi-label">Busiest Port</div>
+        <div class="kpi-value" id="kpi-busiest" style="font-size:18px; color:var(--green)">—</div>
+        <div class="kpi-sub" id="kpi-busiest-count">ships this week</div>
+      </div>
+      <div class="kpi-card" style="--kpi-color: var(--purple)">
+        <div class="kpi-icon">📈</div>
+        <div class="kpi-label">Model R² Score</div>
+        <div class="kpi-value" id="kpi-r2" style="color:var(--purple)">—</div>
+        <div class="kpi-sub">Prediction accuracy</div>
+      </div>
+    </div>
+
+    <!-- Sidebar + Map -->
+    <div id="sidebar">
+      <h3>⚓ UK Ports</h3>
+      <div id="port-list">
+        <div style="color:var(--text-muted); font-size:13px; padding:20px 0; text-align:center">
+          Loading port data...
+        </div>
+      </div>
+    </div>
+
+    <div id="map-container">
+      <!-- Google Map or SVG fallback -->
+      <div id="map"></div>
+
+      <!-- Map controls -->
+      <div id="map-controls">
+        <div class="map-btn" title="Zoom In" onclick="mapAction('zoomIn')">+</div>
+        <div class="map-btn" title="Zoom Out" onclick="mapAction('zoomOut')">−</div>
+        <div class="map-btn" title="Reset View" onclick="mapAction('reset')">⟳</div>
+      </div>
+
+      <!-- Port info popup -->
+      <div id="port-popup">
+        <div class="popup-header">
+          <div>
+            <div style="font-size:11px; color:var(--teal); font-weight:600; text-transform:uppercase; letter-spacing:2px; margin-bottom:4px">
+              ⚓ Port Details
+            </div>
+            <div class="popup-title" id="popup-port-name">—</div>
+          </div>
+          <button id="popup-close" onclick="closePopup()">✕</button>
+        </div>
+        <div class="popup-stats">
+          <div class="popup-stat">
+            <div class="stat-label">Prev Week</div>
+            <div class="stat-value stat-prev" id="popup-prev">—</div>
+          </div>
+          <div class="popup-stat">
+            <div class="stat-label">This Week</div>
+            <div class="stat-value stat-curr" id="popup-curr">—</div>
+          </div>
+          <div class="popup-stat" style="border-color: var(--teal); background: rgba(13,148,136,0.08)">
+            <div class="stat-label" style="color:var(--teal)">🔮 Predicted</div>
+            <div class="stat-value stat-pred" id="popup-pred">—</div>
+          </div>
+        </div>
+        <div style="margin-top:12px; font-size:12px; color:var(--text-muted); text-align:center" id="popup-trend-text"></div>
+      </div>
+    </div>
+
+  </div><!-- /view-dashboard -->
+
+  <!-- ══════════════ ANALYTICS VIEW ═══════════════════════════════════ -->
+  <div id="view-analytics" class="view">
+    <div class="section-title">📊 Port Analytics</div>
+    <div class="section-sub">Detailed breakdown of shipping activity across all UK ports</div>
+
+    <!-- Full port table -->
+    <div class="analytics-card" style="margin-bottom:20px">
+      <h4>📋 Full Port Comparison Table</h4>
+      <div id="analytics-table-wrap" style="overflow-x:auto">
+        <table id="analytics-table" style="width:100%; border-collapse:collapse; font-size:13px">
+          <thead>
+            <tr style="border-bottom:2px solid var(--teal)">
+              <th style="padding:10px 12px; text-align:left; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; font-size:11px">Port</th>
+              <th style="padding:10px 12px; text-align:right; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; font-size:11px">Prev Week</th>
+              <th style="padding:10px 12px; text-align:right; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; font-size:11px">Current Week</th>
+              <th style="padding:10px 12px; text-align:right; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; font-size:11px">Change</th>
+              <th style="padding:10px 12px; text-align:right; color:var(--teal); font-weight:600; text-transform:uppercase; letter-spacing:1px; font-size:11px">🔮 Predicted</th>
+              <th style="padding:10px 12px; text-align:center; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; font-size:11px">Trend</th>
+            </tr>
+          </thead>
+          <tbody id="analytics-tbody">
+            <tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Bar charts row -->
+    <div class="analytics-grid">
+      <div class="analytics-card">
+        <h4>🔮 Predicted vs Current (Ships)</h4>
+        <div class="bar-chart" id="bar-predicted"></div>
+      </div>
+      <div class="analytics-card">
+        <h4>📈 Week-on-Week Change</h4>
+        <div class="bar-chart" id="bar-change"></div>
+      </div>
+    </div>
+
+  </div><!-- /view-analytics -->
+
+  <!-- ══════════════ REPORT VIEW ════════════════════════════════════════ -->
+  <div id="view-report" class="view">
+    <div class="section-title">📋 Report & Data Management</div>
+    <div class="section-sub">Upload new dataset, generate reports, and send via email</div>
+
+    <!-- Model metrics -->
+    <div class="report-card" id="metrics-card">
+      <h3>🤖 Machine Learning Model Performance</h3>
+      <p>Random Forest Regressor trained with 5-fold time-series cross-validation on weekly shipping data for all major UK ports.</p>
+      <div class="metrics-grid" id="metrics-display">
+        <div class="metric-box">
+          <div class="m-label">MAE</div>
+          <div class="m-value" id="m-mae">—</div>
+          <div class="m-cv" id="m-mae-cv">CV: —</div>
+        </div>
+        <div class="metric-box">
+          <div class="m-label">RMSE</div>
+          <div class="m-value" id="m-rmse">—</div>
+          <div class="m-cv" id="m-rmse-cv">CV: —</div>
+        </div>
+        <div class="metric-box">
+          <div class="m-label">R² Score</div>
+          <div class="m-value" id="m-r2">—</div>
+          <div class="m-cv" id="m-r2-cv">CV: —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload -->
+    <div class="report-card">
+      <h3>📤 Upload Dataset</h3>
+      <p>Upload a new <code style="background:var(--surface);padding:2px 6px;border-radius:4px">.xlsx</code> file to retrain the model and refresh all predictions automatically.</p>
+
+      <div id="dropzone" onclick="document.getElementById('file-input').click()"
+           ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave()">
+        <div class="dz-icon">📁</div>
+        <div class="dz-title">Drop your Excel file here</div>
+        <div class="dz-sub">or click to browse • .xlsx / .xls • max 32 MB</div>
+      </div>
+
+      <input type="file" id="file-input" accept=".xlsx,.xls" onchange="fileSelected(this)" />
+
+      <div id="file-chosen">
+        <div class="chosen-icon">📊</div>
+        <div class="chosen-name" id="chosen-name">—</div>
+        <div class="chosen-clear" onclick="clearFile()">✕</div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:16px">
+        <button class="btn btn-primary" id="btn-upload" onclick="uploadFile()" disabled>
+          🚀 Upload & Retrain Model
+        </button>
+        <button class="btn btn-secondary" onclick="clearFile()">Clear</button>
+      </div>
+    </div>
+
+    <!-- Report generation -->
+    <div class="report-card">
+      <h3>📄 Generate PDF Report</h3>
+      <p>Generate a comprehensive shipping intelligence report with trend analysis, port rankings, and ML performance metrics.</p>
+
+      <div class="toggle-row">
+        <span class="toggle-label">📧 Send report via email</span>
+        <label class="toggle">
+          <input type="checkbox" id="email-toggle" onchange="toggleEmailFields()" />
+          <div class="toggle-slider"></div>
+        </label>
+      </div>
+
+      <div id="email-fields" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Sender Gmail Address</label>
+          <input class="form-input" type="email" id="sender-email" placeholder="yourname@gmail.com" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Gmail App Password</label>
+          <input class="form-input" type="password" id="sender-password" placeholder="16-character app password" />
+          <div style="font-size:12px; color:var(--text-muted); margin-top:6px">
+            ⚠️ Use a Gmail <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--teal)">App Password</a>, not your regular password.
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Recipient Email</label>
+          <input class="form-input" type="email" id="recipient-email" placeholder="recipient@example.com" />
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:16px; flex-wrap:wrap">
+        <button class="btn btn-primary" id="btn-generate" onclick="generateReport()">
+          📄 Generate Report
+        </button>
+        <button class="btn btn-secondary" id="btn-download" onclick="downloadReport()">
+          ⬇️ Download PDF
+        </button>
+      </div>
+      <div id="report-status" style="margin-top:12px; font-size:13px; color:var(--text-muted)"></div>
+    </div>
+
+  </div><!-- /view-report -->
+
+</main>
+
+<!-- Toast Container -->
+<div id="toast-container"></div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Processing...</div>
+  <div class="progress-bar-wrap"><div class="progress-bar-fill"></div></div>
+</div>
+
+<!-- ═══════════════════════════ SCRIPTS ═══════════════════════════════════ -->
+<script>
+
+/* ═══════════════════════════════════════════════════════
+   GLOBAL STATE
+═══════════════════════════════════════════════════════ */
+const API_BASE = "http://127.0.0.1:5000";
+let portData = [];
+let metricsData = null;
+let googleMap = null;
+let mapMarkers = [];
+let svgMap = null;
+let selectedPort = null;
+let selectedFile = null;
+
+/* ═══════════════════════════════════════════════════════
+   VIEW SWITCHING
+═══════════════════════════════════════════════════════ */
+function showView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-pill').forEach(p => p.classList.remove('active'));
+
+  if (name === 'dashboard') {
+    document.getElementById('view-dashboard').classList.add('active');
+    document.getElementById('view-dashboard').style.display = 'grid';
+    document.getElementById('pill-dashboard').classList.add('active');
+  } else if (name === 'analytics') {
+    document.getElementById('view-analytics').style.display = 'block';
+    document.getElementById('view-analytics').classList.add('active');
+    document.getElementById('pill-analytics').classList.add('active');
+    renderAnalytics();
+  } else if (name === 'report') {
+    document.getElementById('view-report').style.display = 'block';
+    document.getElementById('view-report').classList.add('active');
+    document.getElementById('pill-report').classList.add('active');
+    renderMetrics();
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   API CALLS
+═══════════════════════════════════════════════════════ */
+async function fetchPredictions() {
+  try {
+    const res = await fetch(`${API_BASE}/api/predictions`);
+    if (!res.ok) throw new Error('Not ready');
+    const data = await res.json();
+    portData = data.predictions;
+    return portData;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchMetrics() {
+  try {
+    const res = await fetch(`${API_BASE}/api/metrics`);
+    if (!res.ok) throw new Error('No metrics');
+    metricsData = await res.json();
+    return metricsData;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/status`);
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   INITIALISE
+═══════════════════════════════════════════════════════ */
+async function init() {
+  setStatus('loading', 'Connecting to server...');
+  showLoading('Connecting to prediction server...');
+
+  // Poll until model is ready
+  let attempts = 0;
+  while (attempts < 60) {
+    const status = await fetchStatus();
+    if (status && status.model_ready) break;
+    await sleep(1500);
+    attempts++;
+    setStatus('loading', `Loading model... (${attempts})`);
+  }
+
+  const data = await fetchPredictions();
+  hideLoading();
+
+  if (!data || data.length === 0) {
+    setStatus('offline', 'No data — upload an Excel file');
+    showToast('No predictions yet. Upload your Excel dataset in the Report tab.', 'info');
+    return;
+  }
+
+  await fetchMetrics();
+  setStatus('online', `Model ready • ${data.length} ports loaded`);
+
+  renderKPIs();
+  renderSidebar();
+  renderMetrics();
+  initMap();
+}
+
+/* ═══════════════════════════════════════════════════════
+   KPI CARDS
+═══════════════════════════════════════════════════════ */
+function renderKPIs() {
+  if (!portData.length) return;
+
+  const totalCurr = portData.reduce((s, p) => s + p.current_week_count, 0);
+  const totalPrev = portData.reduce((s, p) => s + p.prev_week_count, 0);
+  const totalPred = portData.reduce((s, p) => s + p.predicted_next_week, 0);
+  const change = totalCurr - totalPrev;
+  const changePct = ((change / totalPrev) * 100).toFixed(1);
+  const busiest = [...portData].sort((a, b) => b.current_week_count - a.current_week_count)[0];
+
+  document.getElementById('kpi-current').textContent = totalCurr.toLocaleString();
+  document.getElementById('kpi-prev').textContent = totalPrev.toLocaleString();
+  document.getElementById('kpi-pred').textContent = totalPred.toLocaleString();
+  document.getElementById('kpi-busiest').textContent = busiest.port;
+  document.getElementById('kpi-busiest-count').textContent = `${busiest.current_week_count} ships this week`;
+
+  const changeText = `${change >= 0 ? '▲' : '▼'} ${Math.abs(change)} (${Math.abs(changePct)}%) vs prior week`;
+  document.getElementById('kpi-change-text').textContent = changeText;
+  document.getElementById('kpi-change-text').style.color = change >= 0 ? 'var(--green)' : 'var(--red)';
+
+  if (metricsData) {
+    document.getElementById('kpi-r2').textContent = metricsData.r2;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   SIDEBAR PORT LIST
+═══════════════════════════════════════════════════════ */
+function renderSidebar() {
+  const container = document.getElementById('port-list');
+  const sorted = [...portData].sort((a, b) => b.current_week_count - a.current_week_count);
+
+  container.innerHTML = sorted.map(p => {
+    const change = p.current_week_count - p.prev_week_count;
+    const trendClass = change > 0 ? 'trend-up' : (change < 0 ? 'trend-down' : 'trend-flat');
+    const trendText = change > 0 ? `+${change} ↑` : (change < 0 ? `${change} ↓` : '→ Stable');
+    return `
+      <div class="port-list-item" id="sidebar-${p.port.replace(/\s/g,'_')}" onclick="selectPort('${p.port}')">
+        <div class="pname">
+          <span>⚓ ${p.port}</span>
+          <span class="trend-badge ${trendClass}">${trendText}</span>
+        </div>
+        <div class="port-counts">
+          <div class="port-count-val">Prev: <span>${p.prev_week_count}</span></div>
+          <div class="port-count-val">Now: <span>${p.current_week_count}</span></div>
+          <div class="port-count-val" style="grid-column:1/-1">
+            Predicted: <span class="pred-highlight">${p.predicted_next_week}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAP INITIALISATION
+═══════════════════════════════════════════════════════ */
+function initMap() {
+  if (window.GOOGLE_MAPS_API_KEY && window.GOOGLE_MAPS_API_KEY.length > 10) {
+    initGoogleMap();
+  } else {
+    initSVGMap();
+  }
+}
+
+/* ─── Google Maps ─── */
+function initGoogleMap() {
+  const apiKey = window.GOOGLE_MAPS_API_KEY;
+  const script = document.createElement('script');
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&callback=onGoogleMapReady`;
+  script.async = true;
+  document.head.appendChild(script);
+}
+
+window.onGoogleMapReady = function () {
+  const mapEl = document.getElementById('map');
+  googleMap = new google.maps.Map(mapEl, {
+    center: { lat: 54.5, lng: -3.0 },
+    zoom: 6,
+    styles: darkMapStyle(),
+    disableDefaultUI: true,
+    zoomControl: false,
+  });
+
+  portData.forEach(p => {
+    const marker = new google.maps.Marker({
+      position: { lat: p.lat, lng: p.lng },
+      map: googleMap,
+      title: p.port,
+      icon: {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(markerSVG(p)),
+        scaledSize: new google.maps.Size(40, 48),
+        anchor: new google.maps.Point(20, 48),
+      },
+    });
+
+    marker.addListener('click', () => selectPort(p.port));
+    mapMarkers.push({ marker, port: p.port });
+  });
+};
+
+function darkMapStyle() {
+  return [
+    { elementType: 'geometry', stylers: [{ color: '#0D1B2E' }] },
+    { elementType: 'labels.text.fill', stylers: [{ color: '#64748B' }] },
+    { elementType: 'labels.text.stroke', stylers: [{ color: '#060F1E' }] },
+    { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#060F1E' }] },
+    { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#111D33' }] },
+    { featureType: 'administrative.country', elementType: 'geometry.stroke', stylers: [{ color: '#0D9488' }] },
+    { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#111D33' }] },
+  ];
+}
+
+/* ─── SVG Fallback Map ─── */
+function initSVGMap() {
+  const container = document.getElementById('map');
+  container.innerHTML = '';
+
+  // UK bounding box: lat 49.9–60.9, lng -8.7–1.8
+  const LAT_MIN = 49.9, LAT_MAX = 60.9;
+  const LNG_MIN = -8.7, LNG_MAX = 1.8;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+  svg.setAttribute('viewBox', '0 0 800 700');
+  svg.style.background = '#060F1E';
+  svg.id = 'svg-map';
+
+  // Draw a simple UK outline polygon (approximate)
+  const ukPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  ukPath.setAttribute('d', getUKOutlinePath());
+  ukPath.setAttribute('fill', '#0D1B2E');
+  ukPath.setAttribute('stroke', '#0D9488');
+  ukPath.setAttribute('stroke-width', '1.5');
+  ukPath.setAttribute('opacity', '0.8');
+  svg.appendChild(ukPath);
+
+  // Grid lines
+  for (let i = 0; i <= 8; i++) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', i * 100); line.setAttribute('y1', 0);
+    line.setAttribute('x2', i * 100); line.setAttribute('y2', 700);
+    line.setAttribute('stroke', 'rgba(13,148,136,0.05)');
+    line.setAttribute('stroke-width', '1');
+    svg.appendChild(line);
+  }
+  for (let i = 0; i <= 7; i++) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', 0); line.setAttribute('y1', i * 100);
+    line.setAttribute('x2', 800); line.setAttribute('y2', i * 100);
+    line.setAttribute('stroke', 'rgba(13,148,136,0.05)');
+    line.setAttribute('stroke-width', '1');
+    svg.appendChild(line);
+  }
+
+  // Port markers
+  portData.forEach(p => {
+    const x = ((p.lng - LNG_MIN) / (LNG_MAX - LNG_MIN)) * 800;
+    const y = ((LAT_MAX - p.lat) / (LAT_MAX - LAT_MIN)) * 700;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'svg-marker');
+    g.setAttribute('id', `marker-${p.port.replace(/\s/g,'_')}`);
+    g.setAttribute('transform', `translate(${x},${y})`);
+    g.style.cursor = 'pointer';
+    g.addEventListener('click', () => selectPort(p.port));
+
+    // Glow circle
+    const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    glow.setAttribute('r', '20');
+    glow.setAttribute('fill', 'rgba(13,148,136,0.15)');
+    glow.setAttribute('class', 'marker-glow');
+    g.appendChild(glow);
+
+    // Pulse ring
+    const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    pulse.setAttribute('r', '14');
+    pulse.setAttribute('fill', 'none');
+    pulse.setAttribute('stroke', '#0D9488');
+    pulse.setAttribute('stroke-width', '2');
+    pulse.setAttribute('opacity', '0.5');
+    const animEl = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+    animEl.setAttribute('attributeName', 'r');
+    animEl.setAttribute('values', '12;22;12');
+    animEl.setAttribute('dur', `${2 + Math.random() * 2}s`);
+    animEl.setAttribute('repeatCount', 'indefinite');
+    pulse.appendChild(animEl);
+    const animOp = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+    animOp.setAttribute('attributeName', 'opacity');
+    animOp.setAttribute('values', '0.6;0;0.6');
+    animOp.setAttribute('dur', `${2 + Math.random() * 2}s`);
+    animOp.setAttribute('repeatCount', 'indefinite');
+    pulse.appendChild(animOp);
+    g.appendChild(pulse);
+
+    // Main dot
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('r', '8');
+    circle.setAttribute('fill', '#0D9488');
+    circle.setAttribute('stroke', '#14B8A6');
+    circle.setAttribute('stroke-width', '2');
+    g.appendChild(circle);
+
+    // Ship icon
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'central');
+    text.setAttribute('font-size', '9');
+    text.textContent = '⚓';
+    g.appendChild(text);
+
+    // Port name label
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', '0');
+    label.setAttribute('y', '22');
+    label.setAttribute('text-anchor', 'middle');
+    label.setAttribute('fill', '#E2E8F0');
+    label.setAttribute('font-size', '9');
+    label.setAttribute('font-family', 'Inter, sans-serif');
+    label.setAttribute('font-weight', '600');
+    label.textContent = p.port;
+    g.appendChild(label);
+
+    svg.appendChild(g);
+  });
+
+  // Title
+  const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  title.setAttribute('x', '400'); title.setAttribute('y', '30');
+  title.setAttribute('text-anchor', 'middle');
+  title.setAttribute('fill', 'rgba(100,116,139,0.8)');
+  title.setAttribute('font-size', '13');
+  title.setAttribute('font-family', 'Inter, sans-serif');
+  title.setAttribute('font-weight', '600');
+  title.textContent = '🗺 UK Major Ports — Interactive Map';
+  svg.appendChild(title);
+
+  const hint = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  hint.setAttribute('x', '400'); hint.setAttribute('y', '680');
+  hint.setAttribute('text-anchor', 'middle');
+  hint.setAttribute('fill', 'rgba(100,116,139,0.5)');
+  hint.setAttribute('font-size', '10');
+  hint.setAttribute('font-family', 'Inter, sans-serif');
+  hint.textContent = 'Click any port marker to see shipping details and predictions';
+  svg.appendChild(hint);
+
+  container.appendChild(svg);
+  svgMap = svg;
+}
+
+function getUKOutlinePath() {
+  // Approximate UK outline as SVG path in our coordinate space
+  // Mapping: x = ((lng - (-8.7)) / (1.8 - (-8.7))) * 800
+  //           y = ((60.9 - lat) / (60.9 - 49.9)) * 700
+  return `
+    M 470,700 L 460,650 L 450,620 L 440,590 L 430,560 L 415,530 L 400,510
+    L 390,490 L 375,475 L 360,460 L 345,445 L 335,430 L 325,415 L 320,400
+    L 315,385 L 310,370 L 305,355 L 300,340 L 295,320 L 290,305 L 295,285
+    L 300,265 L 310,245 L 325,225 L 340,210 L 355,195 L 370,185 L 385,175
+    L 400,165 L 415,155 L 430,145 L 445,135 L 460,120 L 475,105 L 490,92
+    L 500,80 L 510,70 L 515,60 L 520,50 L 525,45 L 530,50 L 535,62
+    L 530,78 L 525,95 L 520,112 L 515,130 L 520,148 L 528,162 L 535,175
+    L 540,190 L 545,205 L 550,218 L 555,230 L 558,245 L 560,260 L 562,275
+    L 560,290 L 558,305 L 555,320 L 550,335 L 548,350 L 545,365 L 540,380
+    L 535,395 L 528,410 L 520,425 L 510,440 L 500,455 L 490,470 L 480,485
+    L 475,500 L 470,515 L 465,530 L 460,545 L 455,560 L 452,575 L 450,590
+    L 448,605 L 447,620 L 448,635 L 450,650 L 455,665 L 460,680 L 465,695 Z
+  `;
+}
+
+function markerSVG(port) {
+  const color = '#0D9488';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="48" viewBox="0 0 40 48">
+    <circle cx="20" cy="16" r="14" fill="${color}" opacity="0.2"/>
+    <circle cx="20" cy="16" r="10" fill="${color}" stroke="#14B8A6" stroke-width="2"/>
+    <text x="20" y="21" text-anchor="middle" fill="white" font-size="12">⚓</text>
+    <line x1="20" y1="26" x2="20" y2="44" stroke="${color}" stroke-width="2"/>
+  </svg>`;
+}
+
+/* ═══════════════════════════════════════════════════════
+   PORT SELECTION & POPUP
+═══════════════════════════════════════════════════════ */
+function selectPort(portName) {
+  const port = portData.find(p => p.port === portName);
+  if (!port) return;
+
+  selectedPort = portName;
+
+  // Highlight sidebar item
+  document.querySelectorAll('.port-list-item').forEach(el => el.classList.remove('selected'));
+  const sidebarEl = document.getElementById(`sidebar-${portName.replace(/\s/g,'_')}`);
+  if (sidebarEl) {
+    sidebarEl.classList.add('selected');
+    sidebarEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // Highlight SVG marker
+  document.querySelectorAll('.svg-marker').forEach(el => el.classList.remove('selected'));
+  const markerEl = document.getElementById(`marker-${portName.replace(/\s/g,'_')}`);
+  if (markerEl) markerEl.classList.add('selected');
+
+  // Pan Google Map
+  if (googleMap) {
+    googleMap.panTo({ lat: port.lat, lng: port.lng });
+    googleMap.setZoom(8);
+  }
+
+  // Show popup
+  showPortPopup(port);
+}
+
+function showPortPopup(port) {
+  const change = port.current_week_count - port.prev_week_count;
+  const pctChange = port.prev_week_count > 0
+    ? ((change / port.prev_week_count) * 100).toFixed(1)
+    : '0';
+  const predChange = port.predicted_next_week - port.current_week_count;
+
+  document.getElementById('popup-port-name').textContent = `⚓ ${port.port}`;
+  document.getElementById('popup-prev').textContent = port.prev_week_count;
+  document.getElementById('popup-curr').textContent = port.current_week_count;
+  document.getElementById('popup-pred').textContent = port.predicted_next_week;
+
+  const trendEl = document.getElementById('popup-trend-text');
+  const arrow = change >= 0 ? '▲' : '▼';
+  const color = change >= 0 ? 'var(--green)' : 'var(--red)';
+  const predArrow = predChange >= 0 ? '▲' : '▼';
+  const predColor = predChange >= 0 ? 'var(--teal-light)' : 'var(--red)';
+  trendEl.innerHTML = `Week change: <span style="color:${color}; font-weight:700">${arrow} ${Math.abs(change)} (${Math.abs(pctChange)}%)</span>
+    &nbsp;&nbsp;•&nbsp;&nbsp;
+    Next week forecast: <span style="color:${predColor}; font-weight:700">${predArrow} ${Math.abs(predChange)}</span>
+    &nbsp;&nbsp;•&nbsp;&nbsp;
+    Week ending: ${port.current_week_ending}`;
+
+  document.getElementById('port-popup').classList.add('visible');
+}
+
+function closePopup() {
+  document.getElementById('port-popup').classList.remove('visible');
+  selectedPort = null;
+  document.querySelectorAll('.port-list-item').forEach(el => el.classList.remove('selected'));
+  document.querySelectorAll('.svg-marker').forEach(el => el.classList.remove('selected'));
+}
+
+/* ═══════════════════════════════════════════════════════
+   MAP CONTROLS
+═══════════════════════════════════════════════════════ */
+function mapAction(action) {
+  if (googleMap) {
+    if (action === 'zoomIn') googleMap.setZoom(googleMap.getZoom() + 1);
+    if (action === 'zoomOut') googleMap.setZoom(googleMap.getZoom() - 1);
+    if (action === 'reset') { googleMap.panTo({ lat: 54.5, lng: -3.0 }); googleMap.setZoom(6); }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ANALYTICS
+═══════════════════════════════════════════════════════ */
+function renderAnalytics() {
+  if (!portData.length) return;
+
+  const sorted = [...portData].sort((a, b) => b.current_week_count - a.current_week_count);
+
+  // Full table
+  const tbody = document.getElementById('analytics-tbody');
+  tbody.innerHTML = sorted.map((p, i) => {
+    const change = p.current_week_count - p.prev_week_count;
+    const pct = p.prev_week_count > 0 ? ((change / p.prev_week_count) * 100).toFixed(1) : '0';
+    const changeColor = change >= 0 ? 'var(--green)' : 'var(--red)';
+    const changeStr = `${change >= 0 ? '+' : ''}${change} (${pct >= 0 ? '+' : ''}${pct}%)`;
+    const trend = change > 0 ? '↑' : (change < 0 ? '↓' : '→');
+    const trendColor = change > 0 ? 'var(--green)' : (change < 0 ? 'var(--red)' : 'var(--text-muted)');
+    const bg = i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)';
+    return `<tr style="background:${bg}; cursor:pointer" onclick="selectPort('${p.port}'); showView('dashboard')">
+      <td style="padding:10px 12px; font-weight:600">⚓ ${p.port}</td>
+      <td style="padding:10px 12px; text-align:right; font-family:'JetBrains Mono',monospace; color:var(--text-muted)">${p.prev_week_count}</td>
+      <td style="padding:10px 12px; text-align:right; font-family:'JetBrains Mono',monospace; font-weight:700">${p.current_week_count}</td>
+      <td style="padding:10px 12px; text-align:right; font-family:'JetBrains Mono',monospace; color:${changeColor}; font-weight:600">${changeStr}</td>
+      <td style="padding:10px 12px; text-align:right; font-family:'JetBrains Mono',monospace; color:var(--teal-light); font-weight:700">${p.predicted_next_week}</td>
+      <td style="padding:10px 12px; text-align:center; font-size:18px; font-weight:700; color:${trendColor}">${trend}</td>
+    </tr>`;
+  }).join('');
+
+  // Predicted bar chart
+  renderBarChart('bar-predicted', sorted, p => p.predicted_next_week,
+    Math.max(...sorted.map(p => p.predicted_next_week)),
+    'var(--teal)', p => `${p.predicted_next_week}`);
+
+  // Change bar chart
+  const changes = sorted.map(p => ({ port: p, change: p.current_week_count - p.prev_week_count }));
+  const maxAbs = Math.max(...changes.map(c => Math.abs(c.change)));
+  const barC = document.getElementById('bar-change');
+  barC.innerHTML = changes.map(({ port: p, change }) => {
+    const w = maxAbs > 0 ? (Math.abs(change) / maxAbs * 100) : 0;
+    const color = change >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<div class="bar-row">
+      <div class="bar-label">${p.port}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${w}%; background:${color}; color:white">
+          ${change >= 0 ? '+' : ''}${change}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderBarChart(elId, sorted, valueFn, maxVal, color, labelFn) {
+  const el = document.getElementById(elId);
+  el.innerHTML = sorted.map(p => {
+    const val = valueFn(p);
+    const w = maxVal > 0 ? (val / maxVal * 100) : 0;
+    return `<div class="bar-row">
+      <div class="bar-label">${p.port}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${w}%; background:${color}; color:white">
+          ${labelFn(p)}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   METRICS DISPLAY
+═══════════════════════════════════════════════════════ */
+function renderMetrics() {
+  if (!metricsData) return;
+  document.getElementById('m-mae').textContent = metricsData.mae ?? '—';
+  document.getElementById('m-rmse').textContent = metricsData.rmse ?? '—';
+  document.getElementById('m-r2').textContent = metricsData.r2 ?? '—';
+  document.getElementById('m-mae-cv').textContent = `CV: ${metricsData.cv_mae_mean} ± ${metricsData.cv_mae_std}`;
+  document.getElementById('m-rmse-cv').textContent = `CV: ${metricsData.cv_rmse_mean} ± ${metricsData.cv_rmse_std}`;
+  document.getElementById('m-r2-cv').textContent = `CV: ${metricsData.cv_r2_mean} ± ${metricsData.cv_r2_std}`;
+}
+
+/* ═══════════════════════════════════════════════════════
+   FILE UPLOAD
+═══════════════════════════════════════════════════════ */
+function fileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  selectedFile = file;
+  document.getElementById('chosen-name').textContent = file.name;
+  document.getElementById('file-chosen').classList.add('visible');
+  document.getElementById('btn-upload').disabled = false;
+}
+
+function clearFile() {
+  selectedFile = null;
+  document.getElementById('file-input').value = '';
+  document.getElementById('file-chosen').classList.remove('visible');
+  document.getElementById('btn-upload').disabled = true;
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.add('drag-over');
+}
+
+function handleDragLeave() {
+  document.getElementById('dropzone').classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropzone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const fakeInput = { files: [file] };
+    fileSelected(fakeInput);
+  }
+}
+
+async function uploadFile() {
+  if (!selectedFile) { showToast('Please select a file first.', 'error'); return; }
+
+  showLoading('Uploading file and retraining model... This may take 30–60 seconds.');
+  document.getElementById('btn-upload').disabled = true;
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+
+  try {
+    const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: formData });
+    const data = await res.json();
+    hideLoading();
+
+    if (data.success) {
+      portData = data.ports;
+      metricsData = data.metrics;
+      clearFile();
+      renderKPIs();
+      renderSidebar();
+      renderMetrics();
+      initMap();
+      showToast(`✅ Model retrained! ${portData.length} ports loaded.`, 'success');
+      setStatus('online', `Model updated • ${portData.length} ports`);
+    } else {
+      showToast(`❌ Error: ${data.error}`, 'error');
+    }
+  } catch (e) {
+    hideLoading();
+    showToast(`❌ Upload failed: ${e.message}`, 'error');
+  }
+
+  document.getElementById('btn-upload').disabled = false;
+}
+
+/* ═══════════════════════════════════════════════════════
+   REPORT GENERATION
+═══════════════════════════════════════════════════════ */
+function toggleEmailFields() {
+  const checked = document.getElementById('email-toggle').checked;
+  document.getElementById('email-fields').style.display = checked ? 'block' : 'none';
+}
+
+async function generateReport() {
+  showLoading('Generating PDF report...');
+  const sendEmail = document.getElementById('email-toggle').checked;
+
+  const body = { send_email: sendEmail };
+  if (sendEmail) {
+    body.sender_email = document.getElementById('sender-email').value;
+    body.sender_password = document.getElementById('sender-password').value;
+    body.recipient_email = document.getElementById('recipient-email').value;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/generate-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    hideLoading();
+
+    if (data.success) {
+      showToast('✅ PDF report generated successfully!', 'success');
+      document.getElementById('report-status').textContent = '✅ Report ready — click Download to save it.';
+      document.getElementById('report-status').style.color = 'var(--green)';
+
+      if (data.email?.success) {
+        showToast(`📧 Report emailed to ${data.email.recipient}`, 'success');
+      } else if (sendEmail && data.email?.error) {
+        showToast(`⚠️ Email failed: ${data.email.error}`, 'error');
+      }
+    } else {
+      showToast(`❌ Report failed: ${data.error}`, 'error');
+    }
+  } catch (e) {
+    hideLoading();
+    showToast(`❌ Error: ${e.message}`, 'error');
+  }
+}
+
+async function downloadReport() {
+  window.open(`${API_BASE}/api/download-report`, '_blank');
+}
+
+/* ═══════════════════════════════════════════════════════
+   UI UTILITIES
+═══════════════════════════════════════════════════════ */
+function showLoading(text = 'Processing...') {
+  document.getElementById('loading-text').textContent = text;
+  document.getElementById('loading-overlay').classList.add('visible');
+}
+
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.remove('visible');
+}
+
+function setStatus(state, text) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  dot.className = `status-dot ${state === 'online' ? '' : state === 'offline' ? 'offline' : 'loading'}`;
+  txt.textContent = text;
+}
+
+function showToast(msg, type = 'info') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  toast.className = `toast ${type}`;
+  toast.innerHTML = `<span>${icons[type] || '💬'}</span><span>${msg}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 4000);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ═══════════════════════════════════════════════════════
+   START
+═══════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', init);
+
+</script>
+</body>
+</html>
